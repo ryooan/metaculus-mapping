@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+
+    <script type="text/javascript" 
+    src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js">  
+    </script> 
+
+    <script type="text/javascript" src="./jquery.csv.js"></script>
+
+    <link rel="stylesheet" href="style.css">
+
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+</head>
+
+<body>
+
+    <div id="header">
+        <h1>Metaculus Map of Israel / Hamas Conflict</h1>
+    </div>
+    
+    <div id="hover1" class="hoverDiv">
+        <iframe src="https://www.metaculus.com/questions/question_embed/19308/?theme=light" style="height:375px; width:100%; max-width:450px" loading="lazy"></iframe>
+    </div>
+
+    <div id="diagramContainer">
+    </div>
+
+    <script type="module">
+        let elements = {};
+
+        // ES6 import for the 'ready' function
+        import { ready, newInstance } from './node_modules/@jsplumb/browser-ui/js/jsplumb.browser-ui.es.js';
+
+        // Use the 'ready' function to wrap your jsPlumb initialization logic
+        ready(async () => {
+
+            const instance = await newInstance({ container: document.getElementById("diagramContainer") });
+
+            async function fetchData() {
+                // Fetching and parsing the CSV data
+                const response = await fetch('./questions_list.csv');
+                const data = await response.text();
+                const questions = $.csv.toObjects(data); // this converts CSV to array of objects
+
+                // Dynamically creating divs and hoverDivs
+                questions.forEach((question, index) => {
+                    // Create the question div
+                    const questionDiv = document.createElement('div');
+                    questionDiv.className = 'window';
+                    questionDiv.id = 'div' + question.question_id; // Unique ID
+
+                    let textShown = "";
+
+                    if (question.forecast_type === 'binary') {
+                        textShown = `<p>${question.title}</p><p><b>${"Median: " + Math.round(question.median * 100) + "%"}</b></p>`;
+                    } else if (question.forecast_type === 'continuous') {
+                        textShown = `<p>${question.title}</p><p><b>${"Median value: " + question.median}</b></p>`;
+                    }
+
+                    questionDiv.innerHTML = textShown;
+
+                    //add to list of elements for later reference
+                    elements[questionDiv.id] = questionDiv;
+                    //document.getElementById('diagramContainer').appendChild(questionDiv);
+
+                    // Create the hover div
+                    const hoverDiv = document.createElement('div');
+                    hoverDiv.className = 'hoverDiv';
+                    hoverDiv.id = 'hover' + question.question_id; // Unique ID
+                    hoverDiv.innerHTML = `
+                        <iframe src="https://www.metaculus.com/questions/question_embed/${question.question_id}/?theme=light" 
+                            style="height:375px; width:100%; max-width:450px" loading="lazy"></iframe>
+                    `;
+                    //add to list of elements for later reference
+                    elements[hoverDiv.id] = hoverDiv;
+                    document.getElementById('diagramContainer').appendChild(hoverDiv);
+
+                    // If you want the boxes to be draggable
+                    //instance.manage(questionDiv);
+
+                    attachHoverListeners(questionDiv, hoverDiv);
+                });
+
+                //BUILD OUT ELEMENTS HERE:
+
+                //format (element, positionX, positionY)
+
+                const offensiveNov1 = createNode(elements['div19492'],500,50);
+                const councilJan1 = createNode(elements['div19337'],500,200);
+                const sinwar2024 = createNode(elements['div19333'],250,350);
+                const defactoHamas = createNode(elements['div19308'],750,350);
+                const control2025 = createMissing("Who will be in power in the Gaza Strip on January 1, 2025?","control2025",500,500);
+
+                
+                //BUILD OUT CONNECTIONS HERE:
+
+                //format (source,target,sourceLocation,targetLocation)
+                createConnection(offensiveNov1,councilJan1,"bottom","top");
+                createConnection(councilJan1,sinwar2024,"left","top");
+                createConnection(councilJan1,defactoHamas,"right","top");
+                createConnection(sinwar2024,control2025,"bottom","left");
+                createConnection(defactoHamas,control2025,"bottom","right");
+                createConnection(councilJan1,control2025,"bottom","top");
+
+                function createConnection (sourceName,targetName,sourceFace,targetFace) {
+                    instance.connect({
+                        source:sourceName,
+                        target:targetName,
+                        connector:"Flowchart",
+                        anchor: { type:"Continuous", options:{ faces:[ sourceFace, targetFace ] } },
+                        endpoints: ["Blank", "Blank"], 
+                        overlays:[ 
+                            { type:"Arrow", options:{location:1}},
+                        ]
+                    });
+                }
+
+                function createNode(question,positionX,positionY) {
+                    document.getElementById('diagramContainer').appendChild(question);
+                    question.style.left = positionX + 'px';
+                    question.style.top = positionY + 'px';
+                    question.style.backgroundColor = 'lightgreen';
+
+                    return question;
+                }
+
+                function createMissing(questionText,identifier,positionX,positionY) {
+                    const missingDiv = document.createElement('div');
+                    missingDiv.className = 'window';
+                    missingDiv.id = 'div' + identifier;
+                    missingDiv.innerHTML = questionText;
+                    document.getElementById('diagramContainer').appendChild(missingDiv);
+                    missingDiv.style.left = positionX + 'px';
+                    missingDiv.style.top = positionY + 'px';
+                    missingDiv.style.backgroundColor = 'orange';
+
+                    return missingDiv;
+                }
+            }
+
+            await fetchData(); // Fetch and create elements from data
+        });
+
+        function attachHoverListeners(questionDiv, hoverDiv) {
+            let hoverTimeout;
+
+            questionDiv.addEventListener('mouseenter', function(event) {
+                clearTimeout(hoverTimeout);
+
+                let leftPosition = event.clientX - 150; // Adjusted position values
+                let topPosition = event.clientY + 10;
+
+                console.log(event.clientX);
+                console.log(event.clientY);
+
+                // Get the hoverDiv size
+                hoverDiv.style.visibility = 'hidden'; // Make it invisible
+                hoverDiv.style.display = 'block'; // But still render it
+                const hoverDivRect = hoverDiv.getBoundingClientRect();
+
+                const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+                const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+
+                // If the hoverDiv overflows the right edge of the viewport, adjust the left position
+                if ((leftPosition + hoverDivRect.width) > viewportWidth) {
+                    leftPosition = viewportWidth - hoverDivRect.width - 20; // 20 for margin and/or scrollbar
+                }
+
+                // If the hoverDiv overflows the bottom edge of the viewport, adjust the top position
+                if ((topPosition + hoverDivRect.height) > viewportHeight) {
+                    topPosition = viewportHeight - hoverDivRect.height - 20; // 20 for margin and/or scrollbar
+                }
+
+                // Ensure the hoverDiv does not go beyond the left and top viewport bounds
+                if (leftPosition < 0) {
+                    leftPosition = 10; // A small margin instead of 0 to avoid touching the edge
+                }
+
+                if (topPosition < 0) {
+                    topPosition = 10; // A small margin instead of 0 to avoid touching the edge
+                }
+
+                console.log(leftPosition);
+                console.log(topPosition);
+                hoverDiv.style.left = leftPosition + 'px';
+                hoverDiv.style.top = topPosition + 'px';
+                hoverDiv.style.visibility = 'visible'; // Make it visible again
+            });
+
+            questionDiv.addEventListener('mouseleave', function(event) {
+                hoverTimeout = setTimeout(() => {
+                    hoverDiv.style.display = 'none';
+                }, 150); // 300ms delay, adjust to your liking
+            });
+
+            hoverDiv.addEventListener('mouseenter', function(event) {
+                clearTimeout(hoverTimeout);
+            });
+
+            hoverDiv.addEventListener('mouseleave', function(event) {
+                hoverDiv.style.display = 'none';
+            });
+        }
+    </script>
+
+</body>
+
+</html>
