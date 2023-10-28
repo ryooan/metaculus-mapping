@@ -1,11 +1,11 @@
 {
   "dependencies": {
-    "@jsplumb/browser-ui": "^6.2.10"
+    "@jsplumb/browser-ui": "^6.2.10",
+    "panzoom": "^9.4.3"
   },
   "name": "question-mapping",
   "version": "1.0.0",
   "main": "index.js",
-  "devDependencies": {},
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },

@@ -9,9 +9,12 @@
 
     <script type="text/javascript" src="./jquery.csv.js"></script>
 
+    <script src='https://unpkg.com/panzoom@9.4.0/dist/panzoom.min.js'></script>
+
     <link rel="stylesheet" href="style.css">
 
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="UTF-8">
 
 </head>
 
@@ -19,16 +22,55 @@
 
     <div id="header">
         <h1>Metaculus Map of Israel / Hamas Conflict</h1>
+        <button id="zoomIn" class="zoomButton">Zoom In</button>
+        <button id="zoomOut" class="zoomButton">Zoom Out</button>
+        <button id="reset" class="zoomButton">Reset</button>
+    </div>
+
+    <div id="legend">
+        <div class="legendLabel" id="existingQ">
+            <p>Existing Question</p>
+        </div>
+        <div class="legendLabel" id="conditional">
+            <p>Existing Conditional</p>
+        </div>
+        <div class="legendLabel" id="missing">
+            <p>Not Yet on Metaculus</p>
+        </div>
+    </div>
+
+    <div id="container">
+        <div id="diagramContainer">
+        </div>
     </div>
     
-    <div id="hover1" class="hoverDiv">
-        <iframe src="https://www.metaculus.com/questions/question_embed/19308/?theme=light" style="height:375px; width:100%; max-width:450px" loading="lazy"></iframe>
-    </div>
-
-    <div id="diagramContainer">
-    </div>
 
     <script type="module">
+
+        //run panzoom
+        const diagramContainer = document.getElementById('diagramContainer');
+        var panInstance = panzoom(diagramContainer);
+
+        document.getElementById('zoomIn').addEventListener('click', () => {
+            let rect = diagramContainer.getBoundingClientRect();
+            let cx = rect.x + rect.width/2;
+            let cy = rect.y + rect.height/2;
+            panInstance.smoothZoom(cx,cy,1.5);
+        });
+
+        document.getElementById('zoomOut').addEventListener('click', () => {
+            let rect = diagramContainer.getBoundingClientRect();
+            let cx = rect.x + rect.width/2;
+            let cy = rect.y + rect.height/2;
+            panInstance.smoothZoom(cx,cy,0.75);
+        });
+
+        document.getElementById('reset').addEventListener('click', () => {
+            //from here: https://github.com/anvaka/panzoom/issues/69#issuecomment-484351470
+            panInstance.zoomAbs(0,0,1);
+            panInstance.moveTo(0, 0);
+        });
+
         let elements = {};
 
         // ES6 import for the 'ready' function
@@ -37,27 +79,57 @@
         // Use the 'ready' function to wrap your jsPlumb initialization logic
         ready(async () => {
 
-            const instance = await newInstance({ container: document.getElementById("diagramContainer") });
+            const instance = await newInstance({
+                container: document.getElementById("diagramContainer"),
+                dragOptions: {
+                    filter: '*'
+                } });
 
             async function fetchData() {
                 // Fetching and parsing the CSV data
                 const response = await fetch('./questions_list.csv');
                 const data = await response.text();
                 const questions = $.csv.toObjects(data); // this converts CSV to array of objects
+                const groupOuterColor = '#dcebf7';
+                const groupInnerColor = 'AliceBlue';
 
                 // Dynamically creating divs and hoverDivs
                 questions.forEach((question, index) => {
                     // Create the question div
                     const questionDiv = document.createElement('div');
                     questionDiv.className = 'window';
+                    questionDiv.questionID = question.question_id;
                     questionDiv.id = 'div' + question.question_id; // Unique ID
+                    questionDiv.title = question.title;
+                    questionDiv.condition = question.conditioned_on;
+
+                    let subquestionText = "";
+
+                    if (question.type === 'conditional_group') {
+
+                        questionDiv.yes = questions.find(searchedquestions =>
+                            searchedquestions.title === question.title && searchedquestions.conditioned_on == "1.0"
+                        );
+                        questionDiv.no = questions.find(searchedquestions => 
+                            searchedquestions.title === question.title && searchedquestions.conditioned_on == "0.0"
+                        );
+
+                    } else if (question.sub_question_label) {
+
+                        console.log("subquestion label exists");
+                        console.log(question.sub_question_label);
+                        subquestionText = " (" + question.sub_question_label + ")";
+                    }
 
                     let textShown = "";
 
                     if (question.forecast_type === 'binary') {
-                        textShown = `<p>${question.title}</p><p><b>${"Median: " + Math.round(question.median * 100) + "%"}</b></p>`;
+                        textShown = `<p>${question.title + subquestionText}</p><p><b>${"Median: " + Math.round(question.median * 100) + "%"}</b></p>`;
                     } else if (question.forecast_type === 'continuous') {
-                        textShown = `<p>${question.title}</p><p><b>${"Median value: " + question.median}</b></p>`;
+                        //fill this out to convert from X
+
+                        let actualMedian = getActualValue(question.median,question.lower_bound,question.upper_bound,question.deriv_ratio);
+                        textShown = `<p>${question.title + subquestionText}</p><p><b>${"Median: " + actualMedian}</b></p>`;
                     }
 
                     questionDiv.innerHTML = textShown;
@@ -78,23 +150,136 @@
                     elements[hoverDiv.id] = hoverDiv;
                     document.getElementById('diagramContainer').appendChild(hoverDiv);
 
-                    // If you want the boxes to be draggable
-                    //instance.manage(questionDiv);
 
-                    attachHoverListeners(questionDiv, hoverDiv);
+                    attachHoverListeners(questionDiv, hoverDiv, panInstance);
                 });
+
+                if (elements['div19339'].title === elements['div19341'].title) {
+                    console.log("comparison works");
+
+                    console.log(elements['div19341'].condition);
+                    if (elements['div19341'].condition == "1.0") {
+                        console.log("condition works");
+                    }
+                }
 
                 //BUILD OUT ELEMENTS HERE:
 
                 //format (element, positionX, positionY)
+                //for group enter string of id of group element. If not a group enter the diagram container name.
+                //note that positionX and positionY are relative to any parent group elements
+                const offensiveNov1 = createNode(elements['div19492'],300,50);
+                const councilJan1 = createNode(elements['div19337'],300,200);
+                const sinwar2024 = createNode(elements['div19333'],120,350);
+                const defactoHamas = createNode(elements['div19308'],480,350);
+                const control2025 = createMissing("Who will be in power in the Gaza Strip on January 1, 2025?","control2025",300,500);
 
-                const offensiveNov1 = createNode(elements['div19492'],500,50);
-                const councilJan1 = createNode(elements['div19337'],500,200);
-                const sinwar2024 = createNode(elements['div19333'],250,350);
-                const defactoHamas = createNode(elements['div19308'],750,350);
-                const control2025 = createMissing("Who will be in power in the Gaza Strip on January 1, 2025?","control2025",500,500);
+                const israelhamasChildren = [
+                    offensiveNov1,
+                    councilJan1,
+                    sinwar2024,
+                    defactoHamas,
+                    control2025
+                ];
 
+                const westBank = createMissing("Will the West Bank become involved in the conflict?","westBank",350, 750);
+
+                //DEFINE GROUPS HERE
+                //format (childElements,groupID,groupText,positionX,positionY)
+                const israelhamas = createGroup(israelhamasChildren,"israelhamas","Conflict in Gaza",50,50,groupInnerColor);
                 
+                const israelpalestineChildren = [
+                    israelhamas,
+                    westBank
+                ];
+
+                const israelpalestine = createGroup(israelpalestineChildren,"israelpalestine","Israel / Palestine Conflict",50,25,groupOuterColor);
+
+                const hamasHostages = createMissing("How many prisoners will Hamas release before 2024?","hamasHostages",120,50);
+                const israelPrisoners = createNode(elements['div19330'],400, 50);
+                const israelCivDeaths = createNode(elements['div19365'],120, 200);
+                const palCivDeaths = createNode(elements['div19364'],400, 200);
+                const gazaBlockade = createNode(elements['div19343'],260, 350);
+
+                const humanitarianChildren = [
+                    gazaBlockade,
+                    hamasHostages,
+                    israelPrisoners,
+                    israelCivDeaths,
+                    palCivDeaths
+                ];
+
+                var humanitarianLeft = parseInt(israelpalestine.style.left,10) + parseInt(israelpalestine.style.width,10) + 100;
+                const humanitarian = createGroup(humanitarianChildren,"humanitarian","Humanitarian Outcomes",humanitarianLeft,25,groupInnerColor);
+
+
+                const hezbollah2030 = createNode(elements['div7966'],140, 100);
+                const hezbollah2024 = createNode(elements['div19375'],140, 250);
+
+                const hezbollahChildren = [
+                    hezbollah2030,
+                    hezbollah2024
+                ];
+
+                const hezbollah = createGroup(hezbollahChildren,"hezbollah","Lebanon / Hezbollah Involvement",25,250,groupInnerColor);
+
+                const iranPlan = createNode(elements['div19350'],200, 50);
+                const israelAttackIran = createNode(elements['div19332'],200, 200);
+                const [israelIranYes,israelIranNo] = createConditional(elements['div19339'],100, 375, 300, 375);
+                const israelIranWar = createNode(elements['div14899'],200, 500);
+                const iranNuked = createNode(elements['div19386'],200, 650);
+
+                const iranChildren = [
+                    iranPlan,
+                    israelAttackIran,
+                    israelIranYes,
+                    israelIranNo,
+                    israelIranWar,
+                    iranNuked
+                ];
+
+                var iranLeft = parseInt(hezbollah.style.left,10) + parseInt(hezbollah.style.width,10) + 100;
+                const iran = createGroup(iranChildren,"iran","Iran Involvement",iranLeft,50,groupInnerColor);
+
+                const regionalEscalationChildren = [
+                    hezbollah,
+                    iran
+                ];
+
+                var regionalLeft = parseInt(humanitarian.style.left,10) + parseInt(humanitarian.style.width,10) + 100;
+                const regionalEscalation = createGroup(regionalEscalationChildren,"regionalEscalation","Regional Escalation",regionalLeft,25,groupOuterColor);
+
+                const egyptIsraelWar = createNode(elements['div15102'],200, 50);
+                const saudiNormalization = createNode(elements['div17990'],200, 200);
+                
+                const regionalRelationsChildren = [
+                    egyptIsraelWar,
+                    saudiNormalization
+                ];
+
+                const regionalRelations = createGroup(regionalRelationsChildren,"regionalRelations","Regional Relations",950,800,groupInnerColor);
+
+                const [israelIranYesUS, israelIranNoUS] = createConditional(elements['div19459'],225, 50, 425, 50);
+                const USiranWar = createNode(elements['div19444'],325, 200);
+                const [chinaTaiwanYes,chinaTaiwanNo] = createConditional(elements['div19529'],100, 375, 250, 375);
+                const chinaTaiwan = createNode(elements['div10880'],175, 500);
+                const [russiaConditionalYes,russiaConditionalNo] = missingConditional("russiaConditional",400,375,550,375);
+                const russiaGains = createMissing("Will Russia make large gains in Ukraine before 2025?","russiaGains", 475, 500);
+
+                const globalImpactsChildren = [
+                    israelIranYesUS,
+                    israelIranNoUS,
+                    USiranWar,
+                    chinaTaiwanYes,
+                    chinaTaiwanNo,
+                    chinaTaiwan,
+                    russiaConditionalYes,
+                    russiaConditionalNo,
+                    russiaGains
+                ];
+
+                var globalLeft = parseInt(regionalEscalation.style.left,10) + parseInt(regionalEscalation.style.width,10) + 100;
+                const globalImpacts = createGroup(globalImpactsChildren,"globalImpacts","Global Impacts",globalLeft,400,groupInnerColor);
                 //BUILD OUT CONNECTIONS HERE:
 
                 //format (source,target,sourceLocation,targetLocation)
@@ -104,7 +289,44 @@
                 createConnection(sinwar2024,control2025,"bottom","left");
                 createConnection(defactoHamas,control2025,"bottom","right");
                 createConnection(councilJan1,control2025,"bottom","top");
+                createConnection(israelhamas,westBank,"bottom","top");
 
+                //humanitarian connections
+                createConnection(israelPrisoners,hamasHostages,"left","right");
+                createConnection(hamasHostages,israelPrisoners,"right","left");
+                createConnection(israelpalestine,humanitarian,"right","left");
+
+                //regional escalation connections
+                createConnection(israelpalestine,regionalEscalation,"right","left");
+                createConnection(humanitarian,regionalEscalation,"right","left");
+                createConnection(hezbollah,iran,"right","left");
+                createConnection(iran,hezbollah,"left","right");
+                createConnection(iranPlan,israelAttackIran,"bottom","top");
+                createConnection(israelAttackIran,israelIranYes,"bottom","top");
+                createConnection(israelIranYes,israelIranWar,"bottom","top");
+                createConnection(israelAttackIran,israelIranNo,"bottom","top");
+                createConnection(israelIranNo,israelIranWar,"bottom","top");
+                createConnection(israelIranWar,iranNuked,"bottom","top");
+
+                //regional relations connections
+                createConnection(israelpalestine,regionalRelations,"bottom","left");
+                createConnection(humanitarian,regionalRelations,"left","left");
+
+                //global impacts connections
+                createConnection(israelAttackIran,israelIranYesUS,"right","top");
+                createConnection(israelAttackIran,israelIranNoUS,"right","top");
+                createConnection(israelIranYesUS,USiranWar,"bottom","top");
+                createConnection(israelIranNoUS,USiranWar,"bottom","top");
+                createConnection(USiranWar,chinaTaiwanYes,"left","top");
+                createConnection(USiranWar,chinaTaiwanNo,"bottom","top");
+                createConnection(chinaTaiwanNo,chinaTaiwan,"bottom","top");
+                createConnection(chinaTaiwanYes,chinaTaiwan,"bottom","top");
+                createConnection(USiranWar,russiaConditionalYes,"bottom","top");
+                createConnection(USiranWar,russiaConditionalNo,"right","top");
+                createConnection(russiaConditionalYes,russiaGains,"bottom","top");
+                createConnection(russiaConditionalNo,russiaGains,"bottom","top");
+                createConnection(regionalEscalation,globalImpacts,"right","left");
+                
                 function createConnection (sourceName,targetName,sourceFace,targetFace) {
                     instance.connect({
                         source:sourceName,
@@ -119,8 +341,10 @@
                 }
 
                 function createNode(question,positionX,positionY) {
-                    document.getElementById('diagramContainer').appendChild(question);
-                    question.style.left = positionX + 'px';
+                    document.getElementById("diagramContainer").appendChild(question);
+                    console.log("Width");
+                    console.log(question.offsetWidth);
+                    question.style.left = positionX - question.offsetWidth/2 + 'px';
                     question.style.top = positionY + 'px';
                     question.style.backgroundColor = 'lightgreen';
 
@@ -131,60 +355,235 @@
                     const missingDiv = document.createElement('div');
                     missingDiv.className = 'window';
                     missingDiv.id = 'div' + identifier;
-                    missingDiv.innerHTML = questionText;
-                    document.getElementById('diagramContainer').appendChild(missingDiv);
-                    missingDiv.style.left = positionX + 'px';
+                    missingDiv.innerHTML = `<p>${questionText}</p>`;
+                    document.getElementById("diagramContainer").appendChild(missingDiv);
+                    missingDiv.style.left = positionX - missingDiv.offsetWidth/2 + 'px';
                     missingDiv.style.top = positionY + 'px';
                     missingDiv.style.backgroundColor = 'orange';
 
                     return missingDiv;
+                }
+
+                function createConditional(question,positionXYes,positionYYes,positionXNo,positionYNo) {
+                    const conditionalYes = document.createElement('div');
+                    const conditionalNo = document.createElement('div');
+                    conditionalYes.className = 'windowConditional';
+                    conditionalNo.className = 'windowConditional';
+                    conditionalYes.id = 'div' + question.yes.question_id;
+                    conditionalNo.id = 'div' + question.no.question_id;
+
+                    let textShownYes = "";
+                    let textShownNo = "";
+
+                    if (question.yes.forecast_type === 'binary') {
+                        textShownYes = `<p>If Yes</p><p><b>${"Median: " + Math.round(question.yes.median * 100) + "%"}</b></p>`;
+                        textShownNo = `<p>If No</p><p><b>${"Median: " + Math.round(question.no.median * 100) + "%"}</b></p>`;
+                    } else if (question.yes.forecast_type === 'continuous') {
+                        //fill this out to convert from X
+
+                        let actualMedianYes = getActualValue(question.yes.median,question.yes.lower_bound,question.yes.upper_bound,question.yes.deriv_ratio);
+                        let actualMedianNo = getActualValue(question.no.median,question.no.lower_bound,question.no.upper_bound,question.no.deriv_ratio);
+                        textShownYes = `<p>If Yes</p><p><b>${"Median: " + actualMedianYes}</b></p>`;
+                        textShownNo = `<p>If No</p><p><b>${"Median: " + actualMedianNo}</b></p>`;
+                    }
+
+                    conditionalYes.innerHTML = textShownYes;
+                    conditionalNo.innerHTML = textShownNo;
+                    
+                    document.getElementById("diagramContainer").appendChild(conditionalYes);
+                    document.getElementById("diagramContainer").appendChild(conditionalNo);
+
+                    conditionalYes.style.left = positionXYes - conditionalYes.offsetWidth/2 + 'px';
+                    conditionalYes.style.top = positionYYes + 'px';
+                    conditionalYes.style.backgroundColor = 'SpringGreen';
+
+                    conditionalNo.style.left = positionXNo - conditionalNo.offsetWidth/2 + 'px';
+                    conditionalNo.style.top = positionYNo + 'px';
+                    conditionalNo.style.backgroundColor = 'SpringGreen';
+
+                    // Create the hover div
+                    const hoverDiv = document.createElement('div');
+                    hoverDiv.className = 'hoverDiv';
+                    hoverDiv.id = 'hover' + question.question_id; // Unique ID
+                    console.log("QUESTION ID?");
+                    console.log(question.questionID);
+                    hoverDiv.innerHTML = `
+                        <iframe src="https://www.metaculus.com/questions/question_embed/${question.questionID}/?theme=light" 
+                        style="height:375px; width:100%; max-width:450px" loading="lazy"></iframe>
+                    `;
+                    //add to list of elements for later reference
+                    elements[hoverDiv.id] = hoverDiv;
+                    document.getElementById('diagramContainer').appendChild(hoverDiv);
+
+                    attachHoverListeners(conditionalYes, hoverDiv, panInstance);
+                    attachHoverListeners(conditionalNo, hoverDiv, panInstance);
+
+                    return [conditionalYes,conditionalNo];
+                }
+
+                function missingConditional(identifier,positionXYes,positionYYes,positionXNo,positionYNo) {
+                    const conditionalYes = document.createElement('div');
+                    const conditionalNo = document.createElement('div');
+                    conditionalYes.className = 'windowConditional';
+                    conditionalNo.className = 'windowConditional';
+                    conditionalYes.id = 'div' + identifier + "Yes";
+                    conditionalNo.id = 'div' + identifier + "No";
+
+                    let textShownYes = `<p>If Yes</p>`;
+                    let textShownNo = `<p>If No</p>`;
+
+                    conditionalYes.innerHTML = textShownYes;
+                    conditionalNo.innerHTML = textShownNo;
+                    
+                    document.getElementById("diagramContainer").appendChild(conditionalYes);
+                    document.getElementById("diagramContainer").appendChild(conditionalNo);
+
+                    conditionalYes.style.left = positionXYes - conditionalYes.offsetWidth/2 + 'px';
+                    conditionalYes.style.top = positionYYes + 'px';
+                    conditionalYes.style.backgroundColor = 'Orange';
+
+                    conditionalNo.style.left = positionXNo - conditionalNo.offsetWidth/2 + 'px';
+                    conditionalNo.style.top = positionYNo + 'px';
+                    conditionalNo.style.backgroundColor = 'Orange';
+
+                    return [conditionalYes,conditionalNo];
+                }
+
+                function createGroup(childElements,groupID,groupText,positionX,positionY,colorBackground) {
+
+                    const group = document.createElement('div');
+                    const container = document.getElementById("diagramContainer");
+                    group.className = 'groupClass';
+                    group.id = groupID;
+                    group.innerHTML = `<h2>${groupText}</h2>`;
+                    group.style.position = 'absolute';
+                    group.style.left = positionX + 'px';
+                    group.style.top = positionY + 'px';
+
+                    container.appendChild(group);
+
+                    let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+
+                    instance.addGroup({
+                        el:group,
+                        id:groupID
+                    });
+
+                    childElements.forEach(child => {
+                        group.appendChild(child);
+                        instance.addToGroup(groupID,child);
+
+                        //get boundaries to set group size
+                        const rect = child.getBoundingClientRect();
+                        minX = Math.min(minX, rect.left);
+                        minY = Math.min(minY, rect.top);
+                        maxX = Math.max(maxX, rect.right);
+                        maxY = Math.max(maxY, rect.bottom);
+                    })
+
+                    //set it so that the group rect will have equal spacing from edge boxes to edges
+                    const groupRect = group.getBoundingClientRect();
+                    console.log(groupRect.left);
+                    console.log(minX);
+                    group.style.width = (minX - groupRect.left)*2 + (maxX - minX) + 'px';
+                    group.style.height = (minY - groupRect.top)*2 + (maxY - minY) + 'px';
+                    group.style.backgroundColor = colorBackground;
+
+                    return group;
+                }
+
+                function isDate(date) {
+                    // Match against YYYY-MM-DD format
+                    return /^(\d{4})-(\d{2})-(\d{2})$/.test(date);
+                }
+
+                function getActualValue(x,min,max,deriv_ratio) {
+                    let minVal, maxVal;
+                    deriv_ratio = parseFloat(deriv_ratio);
+                    x = parseFloat(x);
+
+                    console.log(min);
+
+                    // Check if min and max are dates or numbers
+                    if (isDate(min) && isDate(max)) {
+                        console.log("DATE");
+                        minVal = new Date(min).getTime();
+                        maxVal = new Date(max).getTime();
+                    } else {
+                        minVal = parseFloat(min);
+                        maxVal = parseFloat(max);
+                    }
+
+                    console.log("minVal");
+                    console.log(minVal);
+                    console.log(maxVal);
+                    console.log(x + 0);
+                    console.log(deriv_ratio + 0);
+                    if (typeof x === 'string') {
+                        console.log("x is treated as a string");
+                    }
+
+                    let xactual;
+                    if (deriv_ratio === 1) {
+                        xactual = minVal + (maxVal - minVal) * x;
+                    } else {
+                        xactual = minVal + (maxVal - minVal) * (Math.pow(deriv_ratio, x) - 1) / (deriv_ratio - 1);
+                    }
+
+                    console.log("xactual before date conversion");
+                    console.log(xactual);
+
+                    // Convert xactual back to date format
+                    if (isDate(min) && isDate(max)) {
+                        const dateObj = new Date(xactual);
+                        const months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+                        xactual = `${months[dateObj.getMonth()]} ${dateObj.getDate()}, ${dateObj.getFullYear()}`;
+                    } else {
+                        //show appropriate decimal places
+                        let magnitude = Math.abs(xactual);
+
+                        if (magnitude >= 0 && magnitude < 10) {
+                            xactual = xactual.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        } else if (magnitude >= 10 && magnitude < 100) {
+                            xactual = xactual.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+                        } else {
+                            xactual = xactual.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                        }
+                    }
+
+                    console.log("xactual");
+                    console.log(xactual);
+
+                    return xactual;
                 }
             }
 
             await fetchData(); // Fetch and create elements from data
         });
 
-        function attachHoverListeners(questionDiv, hoverDiv) {
+        function attachHoverListeners(questionDiv, hoverDiv, panzoomInstance) {
             let hoverTimeout;
 
             questionDiv.addEventListener('mouseenter', function(event) {
                 clearTimeout(hoverTimeout);
 
-                let leftPosition = event.clientX - 150; // Adjusted position values
-                let topPosition = event.clientY + 10;
+                // Get the current transformation values from panzoom
+                const { x, y, scale } = panzoomInstance.getTransform();
+                var rect = document.getElementById("diagramContainer").getBoundingClientRect();
+         
+                console.log("transform");
 
-                console.log(event.clientX);
-                console.log(event.clientY);
+                let leftPosition = (event.clientX - rect.left)/scale - 150; // Adjusted position values
+                let topPosition = (event.clientY - rect.top)/scale + 10;
 
                 // Get the hoverDiv size
                 hoverDiv.style.visibility = 'hidden'; // Make it invisible
                 hoverDiv.style.display = 'block'; // But still render it
                 const hoverDivRect = hoverDiv.getBoundingClientRect();
 
-                const viewportWidth = window.innerWidth || document.documentElement.clientWidth;
-                const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+                const viewportWidth = (window.innerWidth || document.documentElement.clientWidth) / scale;
+                const viewportHeight = (window.innerHeight || document.documentElement.clientHeight) / scale;
 
-                // If the hoverDiv overflows the right edge of the viewport, adjust the left position
-                if ((leftPosition + hoverDivRect.width) > viewportWidth) {
-                    leftPosition = viewportWidth - hoverDivRect.width - 20; // 20 for margin and/or scrollbar
-                }
-
-                // If the hoverDiv overflows the bottom edge of the viewport, adjust the top position
-                if ((topPosition + hoverDivRect.height) > viewportHeight) {
-                    topPosition = viewportHeight - hoverDivRect.height - 20; // 20 for margin and/or scrollbar
-                }
-
-                // Ensure the hoverDiv does not go beyond the left and top viewport bounds
-                if (leftPosition < 0) {
-                    leftPosition = 10; // A small margin instead of 0 to avoid touching the edge
-                }
-
-                if (topPosition < 0) {
-                    topPosition = 10; // A small margin instead of 0 to avoid touching the edge
-                }
-
-                console.log(leftPosition);
-                console.log(topPosition);
                 hoverDiv.style.left = leftPosition + 'px';
                 hoverDiv.style.top = topPosition + 'px';
                 hoverDiv.style.visibility = 'visible'; // Make it visible again
