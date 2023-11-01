@@ -92,7 +92,7 @@ h1 {
     border: 1px solid black;
     border-radius: 0.5em;
     text-align: center;
-    width: 200px;
+    width: 220px;
     height: 100px;
     position: absolute;
     padding: 10px;
@@ -111,8 +111,8 @@ h1 {
     border: 1px solid black;
     border-radius: 35%;
     text-align: center;
-    width: 100px;
-    height: 60px;
+    width: 180px;
+    height: 100px;
     position: absolute;
     padding: 10px;
 }
@@ -134,3 +134,43 @@ h1 {
 	width: 450px;
 	height: 375px;
 }
+
+
+.tooltip {
+    position: relative;
+    display: inline-block;
+}
+
+.tooltip img {
+    vertical-align: middle;
+}
+
+.tooltip .tooltiptext {
+    visibility: hidden;
+    width: 300px;
+    background-color: white;
+    color: black;
+    text-align: center;
+    border: 1px solid black;
+    border-radius: 0.5em;
+    position: absolute;
+    z-index: 1;
+    top: -5px;
+    right: 110%;
+    padding: 10px;
+}
+
+.tooltip .tooltiptext::after {
+    content: " ";
+    position: absolute;
+    top: 50%;
+    left: 100%; /* To the right of the tooltip */
+    margin-top: -5px;
+    /*border-width: 5px;
+    border-style: solid;
+    border-color: transparent transparent transparent black;*/
+  }
+
+  .tooltip:hover .tooltiptext {
+    visibility: visible;
+  }

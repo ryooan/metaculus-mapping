@@ -25,17 +25,18 @@
         <button id="zoomIn" class="zoomButton">Zoom In</button>
         <button id="zoomOut" class="zoomButton">Zoom Out</button>
         <button id="reset" class="zoomButton">Reset</button>
+        <div class="tooltip">
+            <img src="./Information-icon.svg" alt="Information Icon" id="tooltipImage">
+            <span class="tooltiptext" id="infoTooltip">This diagram presents questions on Metaculus or being considered by Metaculus, organized by category and connected by correlation/causation. Hover over a question (or tap on it on mobile) to see the associated Metaculus question. You can also pan and zoom on the diagram. The arrows represent an assessment of correlation or causation between questions and categories, though the connection may not be strong in all cases.</span>
+        </div>
     </div>
 
     <div id="legend">
         <div class="legendLabel" id="existingQ">
-            <p>Existing Question</p>
+            <p>Question</p>
         </div>
         <div class="legendLabel" id="conditional">
-            <p>Existing Conditional</p>
-        </div>
-        <div class="legendLabel" id="missing">
-            <p>Not Yet on Metaculus</p>
+            <p>Conditional</p>
         </div>
     </div>
 
@@ -102,6 +103,8 @@
                     questionDiv.id = 'div' + question.question_id; // Unique ID
                     questionDiv.title = question.title;
                     questionDiv.condition = question.conditioned_on;
+                    questionDiv.active = question.active;
+                    questionDiv.resolution = question.resolution;
 
                     let subquestionText = "";
 
@@ -116,27 +119,73 @@
 
                     } else if (question.sub_question_label) {
 
-                        console.log("subquestion label exists");
-                        console.log(question.sub_question_label);
                         subquestionText = " (" + question.sub_question_label + ")";
                     }
 
                     let textShown = "";
 
-                    if (question.forecast_type === 'binary') {
-                        textShown = `<p>${question.title + subquestionText}</p><p><b>${"Median: " + Math.round(question.median * 100) + "%"}</b></p>`;
-                    } else if (question.forecast_type === 'continuous') {
-                        //fill this out to convert from X
+                    if (question.active === 'OPEN') {
+                        if (question.forecast_type === 'binary') {
+                            textShown = `<p>${question.title + subquestionText}</p><p><b>${"Median: " + Math.round(question.median * 100) + "%"}</b></p>`;
+                        } else if (question.forecast_type === 'continuous') {
+                            //fill this out to convert from X
 
-                        let actualMedian = getActualValue(question.median,question.lower_bound,question.upper_bound,question.deriv_ratio);
-                        textShown = `<p>${question.title + subquestionText}</p><p><b>${"Median: " + actualMedian}</b></p>`;
+                            let actualMedian = getActualValue(question.median,question.lower_bound,question.upper_bound,question.deriv_ratio);
+                            textShown = `<p>${question.title + subquestionText}</p><p><b>${"Median: " + actualMedian}</b></p>`;
+                        } else {
+                            textShown = `<p>${question.title}</p><p><b>Question Group</b></p>`;
+                        }
+                    } else if (question.active === 'RESOLVED') {
+
+                        let resolutionText = '';
+
+                        if (questionDiv.resolution == "-1.0") {
+                            resolutionText = "Resolved as Ambiguous";
+                        } else if (questionDiv.resolution == "-2.0" ) {
+                            resolutionText = "Question Annulled";
+                        }
+
+                        if (question.forecast_type === 'binary') {
+                    
+                            if (questionDiv.resolution == "1.0") {
+                                resolutionText = "Resolved as Yes";
+                            } else if (questionDiv.resolution == "0.0") {
+                                resolutionText = "Resolved as No";
+                            }
+
+                            textShown = `<p>${question.title + subquestionText}</p><p><b>${resolutionText}</b></p>`;
+                        } else if (question.forecast_type === 'continuous') {
+                            let numericResolution = parseFloat(questionDiv.resolution);
+
+                            //fill this out to convert from X
+                            if (questionDiv.resolution == "2.0") {
+                                resolutionText = "Resolved as < " + question.lower_bound;
+                            } else if (questionDiv.resolution == "3.0") {
+                                resolutionText = "Resolved as > " + question.upper_bound;
+                            } else if (numericResolution >= 0 && numericResolution <= 1) {
+                                let resolutionValue = getActualValue(numericResolution,question.lower_bound,question.upper_bound,question.deriv_ratio);
+                                resolutionText = "Resolved as " + resolutionValue;
+                            }
+                        }
+
+                        if (question.forecast_type) {
+                            textShown = `<p>${question.title + subquestionText}</p><p><b>${resolutionText}</b></p>`;
+                        } else {
+                            textShown = `<p>${question.title}</p><p><b>Question Group</b></p>`;
+                        }
+                    } else if (question.active === 'UPCOMING') {
+                        console.log(question.forecast_type);
+                        if (question.forecast_type === 'continuous' || question.forecast_type === 'binary') {
+                            textShown = `<p>${question.title + subquestionText}</p><p><b>Upcoming Question</b></p>`;
+                        } else {
+                            textShown = `<p>${question.title}</p><p><b>Upcoming Question Group</b></p>`;
+                        }
                     }
 
                     questionDiv.innerHTML = textShown;
 
                     //add to list of elements for later reference
                     elements[questionDiv.id] = questionDiv;
-                    //document.getElementById('diagramContainer').appendChild(questionDiv);
 
                     // Create the hover div
                     const hoverDiv = document.createElement('div');
@@ -154,15 +203,6 @@
                     attachHoverListeners(questionDiv, hoverDiv, panInstance);
                 });
 
-                if (elements['div19339'].title === elements['div19341'].title) {
-                    console.log("comparison works");
-
-                    console.log(elements['div19341'].condition);
-                    if (elements['div19341'].condition == "1.0") {
-                        console.log("condition works");
-                    }
-                }
-
                 //BUILD OUT ELEMENTS HERE:
 
                 //format (element, positionX, positionY)
@@ -170,9 +210,9 @@
                 //note that positionX and positionY are relative to any parent group elements
                 const offensiveNov1 = createNode(elements['div19492'],300,50);
                 const councilJan1 = createNode(elements['div19337'],300,200);
-                const sinwar2024 = createNode(elements['div19333'],120,350);
-                const defactoHamas = createNode(elements['div19308'],480,350);
-                const control2025 = createMissing("Who will be in power in the Gaza Strip on January 1, 2025?","control2025",300,500);
+                const sinwar2024 = createNode(elements['div19333'],140,350);
+                const defactoHamas = createNode(elements['div19308'],460,350);
+                const control2025 = createNode(elements['div19716'],300,500);
 
                 const israelhamasChildren = [
                     offensiveNov1,
@@ -182,7 +222,7 @@
                     control2025
                 ];
 
-                const westBank = createMissing("Will the West Bank become involved in the conflict?","westBank",350, 750);
+                const westBank = createNode(elements['div19723'],350, 750);
 
                 //DEFINE GROUPS HERE
                 //format (childElements,groupID,groupText,positionX,positionY)
@@ -195,14 +235,16 @@
 
                 const israelpalestine = createGroup(israelpalestineChildren,"israelpalestine","Israel / Palestine Conflict",50,25,groupOuterColor);
 
-                const hamasHostages = createMissing("How many prisoners will Hamas release before 2024?","hamasHostages",120,50);
-                const israelPrisoners = createNode(elements['div19330'],400, 50);
-                const israelCivDeaths = createNode(elements['div19365'],120, 200);
-                const palCivDeaths = createNode(elements['div19364'],400, 200);
-                const gazaBlockade = createNode(elements['div19343'],260, 350);
+                const hamasHostages = createNode(elements['div19644'],140,50);
+                const hostagesRescued = createNode(elements['div19645'],140,200);
+                const israelPrisoners = createNode(elements['div19330'],420, 50);
+                const israelCivDeaths = createNode(elements['div19365'],420, 200);
+                const palCivDeaths = createNode(elements['div19364'],420, 350);
+                const gazaBlockade = createNode(elements['div19343'],140, 350);
 
                 const humanitarianChildren = [
                     gazaBlockade,
+                    hostagesRescued,
                     hamasHostages,
                     israelPrisoners,
                     israelCivDeaths,
@@ -223,11 +265,11 @@
 
                 const hezbollah = createGroup(hezbollahChildren,"hezbollah","Lebanon / Hezbollah Involvement",25,250,groupInnerColor);
 
-                const iranPlan = createNode(elements['div19350'],200, 50);
-                const israelAttackIran = createNode(elements['div19332'],200, 200);
-                const [israelIranYes,israelIranNo] = createConditional(elements['div19339'],100, 375, 300, 375);
-                const israelIranWar = createNode(elements['div14899'],200, 500);
-                const iranNuked = createNode(elements['div19386'],200, 650);
+                const iranPlan = createNode(elements['div19350'],250, 50);
+                const israelAttackIran = createNode(elements['div19332'],250, 200);
+                const [israelIranYes,israelIranNo] = createConditional("Israel-Iran Conflict if Israel DOES attack Iran?", "Israel-Iran Conflict if Israel DOES NOT attack Iran?", elements['div19339'],125, 375, 375, 375);
+                const israelIranWar = createNode(elements['div14899'],250, 550);
+                const iranNuked = createNode(elements['div19386'],250, 700);
 
                 const iranChildren = [
                     iranPlan,
@@ -247,7 +289,7 @@
                 ];
 
                 var regionalLeft = parseInt(humanitarian.style.left,10) + parseInt(humanitarian.style.width,10) + 100;
-                const regionalEscalation = createGroup(regionalEscalationChildren,"regionalEscalation","Regional Escalation",regionalLeft,25,groupOuterColor);
+                const regionalEscalation = createGroup(regionalEscalationChildren,"regionalEscalation","Escalation With Hezbollah and Iran",regionalLeft,25,groupOuterColor);
 
                 const egyptIsraelWar = createNode(elements['div15102'],200, 50);
                 const saudiNormalization = createNode(elements['div17990'],200, 200);
@@ -259,12 +301,12 @@
 
                 const regionalRelations = createGroup(regionalRelationsChildren,"regionalRelations","Regional Relations",950,800,groupInnerColor);
 
-                const [israelIranYesUS, israelIranNoUS] = createConditional(elements['div19459'],225, 50, 425, 50);
-                const USiranWar = createNode(elements['div19444'],325, 200);
-                const [chinaTaiwanYes,chinaTaiwanNo] = createConditional(elements['div19529'],100, 375, 250, 375);
-                const chinaTaiwan = createNode(elements['div10880'],175, 500);
-                const [russiaConditionalYes,russiaConditionalNo] = missingConditional("russiaConditional",400,375,550,375);
-                const russiaGains = createMissing("Will Russia make large gains in Ukraine before 2025?","russiaGains", 475, 500);
+                const [israelIranYesUS, israelIranNoUS] = createConditional("US-Iran conflict if Israel DOES attack Iran?", "US-Iran conflict if Israel DOES NOT attack Iran?",elements['div19459'],300, 50, 700, 50);
+                const USiranWar = createNode(elements['div19444'],500, 225);
+                const [chinaTaiwanYes,chinaTaiwanNo] = createConditional("China invades Taiwan if US-Iran conflict DOES occur?","China invades Taiwa if US-Iran conflict DOES NOT occur?",elements['div19529'],125, 400, 375, 400);
+                const chinaTaiwan = createNode(elements['div10880'],250, 575);
+                const [russiaConditionalYes,russiaConditionalNo] = missingConditional("Russia gains in Ukraine if US-Iran conflict DOES occur?","Russia gains in Ukraine if US-Iran conflict DOES NOT occur?","russiaConditional",625,400,875,400);
+                const russiaGains = createNode(elements['div19724'], 750, 575);
 
                 const globalImpactsChildren = [
                     israelIranYesUS,
@@ -302,9 +344,9 @@
                 createConnection(hezbollah,iran,"right","left");
                 createConnection(iran,hezbollah,"left","right");
                 createConnection(iranPlan,israelAttackIran,"bottom","top");
-                createConnection(israelAttackIran,israelIranYes,"bottom","top");
+                createConditionalConnection(israelAttackIran,israelIranYes,"bottom","top");
                 createConnection(israelIranYes,israelIranWar,"bottom","top");
-                createConnection(israelAttackIran,israelIranNo,"bottom","top");
+                createConditionalConnection(israelAttackIran,israelIranNo,"bottom","top");
                 createConnection(israelIranNo,israelIranWar,"bottom","top");
                 createConnection(israelIranWar,iranNuked,"bottom","top");
 
@@ -313,16 +355,16 @@
                 createConnection(humanitarian,regionalRelations,"left","left");
 
                 //global impacts connections
-                createConnection(israelAttackIran,israelIranYesUS,"right","top");
-                createConnection(israelAttackIran,israelIranNoUS,"right","top");
+                createConditionalConnection(israelAttackIran,israelIranYesUS,"right","top");
+                createConditionalConnection(israelAttackIran,israelIranNoUS,"right","top");
                 createConnection(israelIranYesUS,USiranWar,"bottom","top");
                 createConnection(israelIranNoUS,USiranWar,"bottom","top");
-                createConnection(USiranWar,chinaTaiwanYes,"left","top");
-                createConnection(USiranWar,chinaTaiwanNo,"bottom","top");
+                createConditionalConnection(USiranWar,chinaTaiwanYes,"left","top");
+                createConditionalConnection(USiranWar,chinaTaiwanNo,"bottom","top");
                 createConnection(chinaTaiwanNo,chinaTaiwan,"bottom","top");
                 createConnection(chinaTaiwanYes,chinaTaiwan,"bottom","top");
-                createConnection(USiranWar,russiaConditionalYes,"bottom","top");
-                createConnection(USiranWar,russiaConditionalNo,"right","top");
+                createConditionalConnection(USiranWar,russiaConditionalYes,"bottom","top");
+                createConditionalConnection(USiranWar,russiaConditionalNo,"right","top");
                 createConnection(russiaConditionalYes,russiaGains,"bottom","top");
                 createConnection(russiaConditionalNo,russiaGains,"bottom","top");
                 createConnection(regionalEscalation,globalImpacts,"right","left");
@@ -340,14 +382,40 @@
                     });
                 }
 
+                function createConditionalConnection (sourceName,targetName,sourceFace,targetFace) {
+                    instance.connect({
+                        source:sourceName,
+                        target:targetName,
+                        connector:"Flowchart",
+                        anchor: { type:"Continuous", options:{ faces:[ sourceFace, targetFace ] } },
+                        endpoints: ["Blank", "Blank"],
+                        overlays:[ 
+                            {
+                            type:"Arrow",
+                            options:
+                                {
+                                location:1,
+                                width:10,
+                                length:20,
+                                foldback:0.4
+                                }
+                        
+                            },
+                        ]
+                    });
+                }
+
                 function createNode(question,positionX,positionY) {
                     document.getElementById("diagramContainer").appendChild(question);
-                    console.log("Width");
-                    console.log(question.offsetWidth);
                     question.style.left = positionX - question.offsetWidth/2 + 'px';
                     question.style.top = positionY + 'px';
-                    question.style.backgroundColor = 'lightgreen';
 
+                    if (question.active === 'UPCOMING') {
+                        question.style.backgroundColor = 'plum';
+                    } else {
+                        question.style.backgroundColor = 'lightgreen';
+                    }
+                    
                     return question;
                 }
 
@@ -355,16 +423,17 @@
                     const missingDiv = document.createElement('div');
                     missingDiv.className = 'window';
                     missingDiv.id = 'div' + identifier;
-                    missingDiv.innerHTML = `<p>${questionText}</p>`;
+                    missingDiv.innerHTML = `<p>${questionText}</p><p><b>Not Yet on Metaculus</b></p>`;
                     document.getElementById("diagramContainer").appendChild(missingDiv);
                     missingDiv.style.left = positionX - missingDiv.offsetWidth/2 + 'px';
                     missingDiv.style.top = positionY + 'px';
-                    missingDiv.style.backgroundColor = 'orange';
+                    missingDiv.style.backgroundColor = 'Gold';
 
                     return missingDiv;
                 }
 
-                function createConditional(question,positionXYes,positionYYes,positionXNo,positionYNo) {
+                function createConditional(textYes,textNo,question,positionXYes,positionYYes,positionXNo,positionYNo) {
+                                   
                     const conditionalYes = document.createElement('div');
                     const conditionalNo = document.createElement('div');
                     conditionalYes.className = 'windowConditional';
@@ -376,8 +445,8 @@
                     let textShownNo = "";
 
                     if (question.yes.forecast_type === 'binary') {
-                        textShownYes = `<p>If Yes</p><p><b>${"Median: " + Math.round(question.yes.median * 100) + "%"}</b></p>`;
-                        textShownNo = `<p>If No</p><p><b>${"Median: " + Math.round(question.no.median * 100) + "%"}</b></p>`;
+                        textShownYes = `<p>${textYes}</p><p><b>${"Median: " + Math.round(question.yes.median * 100) + "%"}</b></p>`;
+                        textShownNo = `<p>${textNo}</p><p><b>${"Median: " + Math.round(question.no.median * 100) + "%"}</b></p>`;
                     } else if (question.yes.forecast_type === 'continuous') {
                         //fill this out to convert from X
 
@@ -405,8 +474,6 @@
                     const hoverDiv = document.createElement('div');
                     hoverDiv.className = 'hoverDiv';
                     hoverDiv.id = 'hover' + question.question_id; // Unique ID
-                    console.log("QUESTION ID?");
-                    console.log(question.questionID);
                     hoverDiv.innerHTML = `
                         <iframe src="https://www.metaculus.com/questions/question_embed/${question.questionID}/?theme=light" 
                         style="height:375px; width:100%; max-width:450px" loading="lazy"></iframe>
@@ -421,7 +488,7 @@
                     return [conditionalYes,conditionalNo];
                 }
 
-                function missingConditional(identifier,positionXYes,positionYYes,positionXNo,positionYNo) {
+                function missingConditional(textYes,textNo,identifier,positionXYes,positionYYes,positionXNo,positionYNo) {
                     const conditionalYes = document.createElement('div');
                     const conditionalNo = document.createElement('div');
                     conditionalYes.className = 'windowConditional';
@@ -429,8 +496,8 @@
                     conditionalYes.id = 'div' + identifier + "Yes";
                     conditionalNo.id = 'div' + identifier + "No";
 
-                    let textShownYes = `<p>If Yes</p>`;
-                    let textShownNo = `<p>If No</p>`;
+                    let textShownYes = `<p>${textYes}</p><p><b>Not Yet on Metaculus</b></p>`;
+                    let textShownNo = `<p>${textNo}</p><p><b>Not Yet on Metaculus</b></p>`;
 
                     conditionalYes.innerHTML = textShownYes;
                     conditionalNo.innerHTML = textShownNo;
@@ -440,11 +507,11 @@
 
                     conditionalYes.style.left = positionXYes - conditionalYes.offsetWidth/2 + 'px';
                     conditionalYes.style.top = positionYYes + 'px';
-                    conditionalYes.style.backgroundColor = 'Orange';
+                    conditionalYes.style.backgroundColor = 'Gold';
 
                     conditionalNo.style.left = positionXNo - conditionalNo.offsetWidth/2 + 'px';
                     conditionalNo.style.top = positionYNo + 'px';
-                    conditionalNo.style.backgroundColor = 'Orange';
+                    conditionalNo.style.backgroundColor = 'Gold';
 
                     return [conditionalYes,conditionalNo];
                 }
@@ -483,8 +550,6 @@
 
                     //set it so that the group rect will have equal spacing from edge boxes to edges
                     const groupRect = group.getBoundingClientRect();
-                    console.log(groupRect.left);
-                    console.log(minX);
                     group.style.width = (minX - groupRect.left)*2 + (maxX - minX) + 'px';
                     group.style.height = (minY - groupRect.top)*2 + (maxY - minY) + 'px';
                     group.style.backgroundColor = colorBackground;
@@ -502,25 +567,13 @@
                     deriv_ratio = parseFloat(deriv_ratio);
                     x = parseFloat(x);
 
-                    console.log(min);
-
                     // Check if min and max are dates or numbers
                     if (isDate(min) && isDate(max)) {
-                        console.log("DATE");
                         minVal = new Date(min).getTime();
                         maxVal = new Date(max).getTime();
                     } else {
                         minVal = parseFloat(min);
                         maxVal = parseFloat(max);
-                    }
-
-                    console.log("minVal");
-                    console.log(minVal);
-                    console.log(maxVal);
-                    console.log(x + 0);
-                    console.log(deriv_ratio + 0);
-                    if (typeof x === 'string') {
-                        console.log("x is treated as a string");
                     }
 
                     let xactual;
@@ -529,9 +582,6 @@
                     } else {
                         xactual = minVal + (maxVal - minVal) * (Math.pow(deriv_ratio, x) - 1) / (deriv_ratio - 1);
                     }
-
-                    console.log("xactual before date conversion");
-                    console.log(xactual);
 
                     // Convert xactual back to date format
                     if (isDate(min) && isDate(max)) {
@@ -551,9 +601,6 @@
                         }
                     }
 
-                    console.log("xactual");
-                    console.log(xactual);
-
                     return xactual;
                 }
             }
@@ -563,46 +610,87 @@
 
         function attachHoverListeners(questionDiv, hoverDiv, panzoomInstance) {
             let hoverTimeout;
+            let isInsideQuestionDiv = false; // Flag to check if touch started inside questionDiv
 
-            questionDiv.addEventListener('mouseenter', function(event) {
+            function showHoverDiv(event) {
                 clearTimeout(hoverTimeout);
 
                 // Get the current transformation values from panzoom
                 const { x, y, scale } = panzoomInstance.getTransform();
                 var rect = document.getElementById("diagramContainer").getBoundingClientRect();
-         
-                console.log("transform");
 
-                let leftPosition = (event.clientX - rect.left)/scale - 150; // Adjusted position values
-                let topPosition = (event.clientY - rect.top)/scale + 10;
+                // Use touch event's clientX and clientY if available, otherwise use mouse event's
+                const clientX = event.touches ? event.touches[0].clientX : event.clientX;
+                const clientY = event.touches ? event.touches[0].clientY : event.clientY;
 
-                // Get the hoverDiv size
-                hoverDiv.style.visibility = 'hidden'; // Make it invisible
-                hoverDiv.style.display = 'block'; // But still render it
-                const hoverDivRect = hoverDiv.getBoundingClientRect();
+                let leftPosition = (clientX - rect.left) / scale - 150;
+                let topPosition = (clientY - rect.top) / scale + 10;
 
-                const viewportWidth = (window.innerWidth || document.documentElement.clientWidth) / scale;
-                const viewportHeight = (window.innerHeight || document.documentElement.clientHeight) / scale;
-
+                hoverDiv.style.visibility = 'hidden';
+                hoverDiv.style.display = 'block';
                 hoverDiv.style.left = leftPosition + 'px';
                 hoverDiv.style.top = topPosition + 'px';
-                hoverDiv.style.visibility = 'visible'; // Make it visible again
-            });
+                hoverDiv.style.visibility = 'visible';
 
-            questionDiv.addEventListener('mouseleave', function(event) {
+                // Add event listener for touch outside
+                document.addEventListener('touchstart', handleTouchOutside, true);
+            }
+
+            function hideHoverDiv() {
                 hoverTimeout = setTimeout(() => {
                     hoverDiv.style.display = 'none';
-                }, 150); // 300ms delay, adjust to your liking
-            });
+                    // Remove event listener for touch outside
+                    document.removeEventListener('touchstart', handleTouchOutside, true);
+                }, 150);
+            }
 
-            hoverDiv.addEventListener('mouseenter', function(event) {
-                clearTimeout(hoverTimeout);
-            });
+            function handleTouchOutside(event) {
+                if (!hoverDiv.contains(event.target) && !questionDiv.contains(event.target)) {
+                    hideHoverDiv();
+                }
+            }
 
-            hoverDiv.addEventListener('mouseleave', function(event) {
-                hoverDiv.style.display = 'none';
+            // Mouse events
+            questionDiv.addEventListener('mouseenter', showHoverDiv);
+            questionDiv.addEventListener('mouseleave', hideHoverDiv);
+            hoverDiv.addEventListener('mouseenter', () => clearTimeout(hoverTimeout));
+            hoverDiv.addEventListener('mouseleave', () => hoverDiv.style.display = 'none');
+
+            // Touch events for mobile
+            questionDiv.addEventListener('touchstart', (e) => {
+                showHoverDiv(e);
             });
         }
+
+        //make the info tooltip stay on the page
+        document.querySelector('.tooltip').addEventListener('mouseover', function() {
+            var infoImg = document.getElementById('tooltipImage');
+            var tooltip = document.getElementById('infoTooltip');
+            var rect = tooltip.getBoundingClientRect();
+            var imgRect = infoImg.getBoundingClientRect();
+
+            var leftDistance = imgRect.left;
+            var rightDistance = window.innerWidth - imgRect.left;
+            var tooltipWidth = parseInt(window.getComputedStyle(tooltip).width, 10);
+            
+            // Check if the tooltip is outside the viewport on the right side
+            console.log(tooltipWidth);
+            console.log(leftDistance);
+            console.log(rightDistance);
+            console.log(leftDistance - tooltipWidth);
+
+            if (leftDistance - tooltipWidth < 0) {
+                tooltip.style.left = `${-leftDistance + 10}px`;
+                tooltip.style.top = '20px';
+            }
+        });
+
+        document.querySelector('.tooltip').addEventListener('mouseout', function() {
+            var tooltip = document.getElementById('infoTooltip');
+            tooltip.style.left = 'auto';
+            tooltip.style.right = '110%';
+        });
+
     </script>
 
 </body>

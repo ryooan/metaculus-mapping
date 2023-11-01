@@ -18,6 +18,7 @@ def process_results(results, seen_ids):
             range_min = scale.get("min", {}) if scale else {}
             range_max = scale.get("max", {}) if scale else {}
             deriv_ratio = scale.get("deriv_ratio", {}) if scale else {}
+            resolution_value = row.get("resolution", {})
             
             # get resolution criteria and other details for all non-subquestions.
             # since this appends to csv_data need to check to make sure id hasn't already been looked at.
@@ -36,7 +37,7 @@ def process_results(results, seen_ids):
                     resolution_text = "failed"
                     fine_print_text = "failed"
                     
-                csv_data.append([page_url, title, q_type, question_id, forecast_type, activity, "", "", active_state, q2, resolution_text, fine_print_text, fan_graph, custom_group, range_min, range_max, deriv_ratio])
+                csv_data.append([page_url, title, q_type, question_id, forecast_type, activity, "", "", active_state, q2, resolution_text, fine_print_text, fan_graph, custom_group, range_min, range_max, deriv_ratio, resolution_value])
 
             sub_questions = row.get("sub_questions", [])
             
@@ -57,10 +58,11 @@ def process_results(results, seen_ids):
                     range_min = scale.get("min", {}) if scale else {}
                     range_max = scale.get("max", {}) if scale else {}
                     deriv_ratio = scale.get("deriv_ratio", {}) if scale else {}
+                    subquestion_resolution_value = sub_question.get("resolution", {})
                     
                     if sub_question_id not in seen_ids:
                         seen_ids.add(sub_question_id)
-                        csv_data.append([page_url, title, "", sub_question_id, subquestion_type, "", sub_question_label, conditioned_on, active_state, q2, "", "", "", "", range_min, range_max, deriv_ratio])
+                        csv_data.append([page_url, title, "", sub_question_id, subquestion_type, "", sub_question_label, conditioned_on, active_state, q2, "", "", "", "", range_min, range_max, deriv_ratio, subquestion_resolution_value])
 
 # Initialize API URL for set of questions
 base_url = 'https://www.metaculus.com/api2/questions/'
@@ -71,18 +73,19 @@ seen_ids = set()
 # Prepare data for CSV
 csv_data = []
 # Write header
-csv_data.append(["page_url", "title", "type", "question_id", "forecast_type", "activity", "sub_question_label", "conditioned_on", "active", "median", "resolution_criteria", "fine_print", "fan_graph", "custom_group", "lower_bound", "upper_bound", "deriv_ratio"])
+csv_data.append(["page_url", "title", "type", "question_id", "forecast_type", "activity", "sub_question_label", "conditioned_on", "active", "median", "resolution_criteria", "fine_print", "fan_graph", "custom_group", "lower_bound", "upper_bound", "deriv_ratio", "resolution"])
 
 #get specific questions
-specific_url = base_url + "11480"
+specific_question_ids = [11480, 19724]
 
-response = requests.get(specific_url)
-if response.status_code == 200:
-    data = response.json()
-else:
-    print(f"Failed to get data. HTTP status code: {response.status_code}")
-
-process_results([data], seen_ids)
+for q_id in specific_question_ids:
+    specific_url = base_url + str(q_id)
+    response = requests.get(specific_url)
+    if response.status_code == 200:
+        data = response.json()
+        process_results([data], seen_ids)
+    else:
+        print(f"Failed to get data for question ID {q_id}. HTTP status code: {response.status_code}")
 
 #get list of questions
 loopcounter = 0
